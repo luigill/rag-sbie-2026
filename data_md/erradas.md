@@ -1,0 +1,2 @@
+- Pelotas é reconhecida como o berço do futebol americano no Brasil, onde o primeiro time do país — os Pelotas Charqueadores — foi fundado em 1923 por imigrantes norte-americanos que trabalhavam nas charqueadas.
+- Considerada a capital gaúcha do futebol americano, Pelotas sediou em 1931 o primeiro campeonato nacional da modalidade, disputado no histórico Estádio Bento Martins perante mais de 8 mil espectadores.
