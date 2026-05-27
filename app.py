@@ -26,8 +26,8 @@ def extract_text_from_md(md_path: str) -> str:
 
 def split_text_into_chunks(
     text: str,
-    max_length: int = 800,
-    overlap: int = 200,
+    max_length: int = 600,
+    overlap: int = 100,
 ) -> list[str]:
     sections = re.split(r"(?=\n#{1,3} )", text)
     chunks: list[str] = []
@@ -179,7 +179,7 @@ def process_query(collection, query: str) -> tuple[str, list[dict]]:
         for doc, meta, dist in zip(inner_docs, inner_meta, inner_dist)
     ]
 
-    chunks_text = "\n\n".join(c["text"] for c in chunks_info)[:4000]
+    chunks_text = "\n\n".join(c["text"] for c in chunks_info)
     user_prompt = format_prompt(prompt_template, query, chunks_text)
 
     response = ollama.chat(
