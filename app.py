@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from datetime import datetime
 
 import chromadb
 import ollama
@@ -9,7 +10,7 @@ import yaml
 
 # ─── Configuração ────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = "qwen3-embedding:0.6b"
-GENERATION_MODEL = "deepseek-r1:8b"  # ollama pull llama3  (ou gemma3, mistral, etc.)
+GENERATION_MODEL = "gemma3:4b"  # ollama pull llama3  (ou gemma3, mistral, etc.)
 
 
 # ─── Markdown ─────────────────────────────────────────────────────────────────
@@ -25,42 +26,23 @@ def extract_text_from_md(md_path: str) -> str:
 
 def split_text_into_chunks(
     text: str,
-    max_length: int = 400,
-    sentence_max_length: int = 400,
+    max_length: int = 800,
+    overlap: int = 200,
 ) -> list[str]:
-    """Divide o texto em chunks menores respeitando o tamanho máximo."""
-    sentence_pattern = re.compile(r"([^.!?]+[.!?])")
-    sentences = sentence_pattern.findall(text)
-
+    sections = re.split(r"(?=\n#{1,3} )", text)
     chunks: list[str] = []
-    current_chunk: list[str] = []
-    current_length = 0
-
-    def flush():
-        if current_chunk:
-            chunks.append("".join(current_chunk).strip())
-
-    for sentence in sentences:
-        if len(sentence) > sentence_max_length:
-            parts = [
-                sentence[i : i + sentence_max_length]
-                for i in range(0, len(sentence), sentence_max_length)
-            ]
-            for part in parts:
-                if current_length + len(part) > max_length:
-                    flush()
-                    current_chunk, current_length = [], 0
-                current_chunk.append(part)
-                current_length += len(part)
+    for section in sections:
+        section = section.strip()
+        if not section:
+            continue
+        if len(section) <= max_length:
+            chunks.append(section)
         else:
-            if current_length + len(sentence) > max_length:
-                flush()
-                current_chunk, current_length = [], 0
-            current_chunk.append(sentence)
-            current_length += len(sentence)
-
-    flush()
-    return chunks
+            start = 0
+            while start < len(section):
+                chunks.append(section[start : start + max_length].strip())
+                start += max_length - overlap
+    return [c for c in chunks if c]
 
 
 # ─── Embeddings (Ollama) ──────────────────────────────────────────────────────
@@ -121,19 +103,30 @@ def process_mds_in_folder(folder_path: str, collection, on_progress=None) -> str
         base_step = file_idx * 3
 
         if on_progress:
-            on_progress(base_step / total_steps, f"[{file_idx+1}/{total}] {doc_name} — dividindo em chunks...")
+            on_progress(
+                base_step / total_steps,
+                f"[{file_idx + 1}/{total}] {doc_name} — dividindo em chunks...",
+            )
         text = extract_text_from_md(md_path)
         chunks = split_text_into_chunks(text)
 
         if on_progress:
-            on_progress((base_step + 1) / total_steps, f"[{file_idx+1}/{total}] {doc_name} — gerando embeddings ({len(chunks)} chunks)...")
+            on_progress(
+                (base_step + 1) / total_steps,
+                f"[{file_idx + 1}/{total}] {doc_name} — gerando embeddings ({len(chunks)} chunks)...",
+            )
         embeddings = get_embeddings(chunks)
 
         if on_progress:
-            on_progress((base_step + 2) / total_steps, f"[{file_idx+1}/{total}] {doc_name} — salvando no ChromaDB...")
+            on_progress(
+                (base_step + 2) / total_steps,
+                f"[{file_idx + 1}/{total}] {doc_name} — salvando no ChromaDB...",
+            )
         collection.add(
             documents=chunks,
-            metadatas=[{"chunk_id": i, "doc_name": doc_name} for i in range(len(chunks))],
+            metadatas=[
+                {"chunk_id": i, "doc_name": doc_name} for i in range(len(chunks))
+            ],
             ids=[f"{doc_name}_doc_{i}" for i in range(len(chunks))],
             embeddings=embeddings,
         )
@@ -240,7 +233,7 @@ def main():
     st.write("Faça perguntas sobre a história da cidade de Pelotas!")
 
     question = st.text_input(
-        "### Insira aqui sua pergunta:", placeholder="Digite sua pergunta aqui..."
+        "Insira aqui sua pergunta:", placeholder="Digite sua pergunta aqui..."
     )
 
     if st.button("Enviar"):
@@ -249,6 +242,18 @@ def main():
                 answer, chunks_info = process_query(collection, question)
             st.session_state["answer"] = answer
             st.session_state["chunks_info"] = chunks_info
+            with open("answers_log.jsonl", "a", encoding="utf-8") as log_f:
+                log_f.write(
+                    json.dumps(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "question": question,
+                            "answer": answer,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
         else:
             st.warning("Faça uma pergunta!")
 
